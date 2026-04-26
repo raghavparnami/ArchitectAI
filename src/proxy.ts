@@ -6,6 +6,9 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/webhooks(.*)',
+  // Inngest's runner posts here with its own HMAC signature; Clerk auth
+  // would block its requests.
+  '/api/inngest(.*)',
 ]);
 
 // Next.js 16: file is `proxy.ts` and the export is named `proxy`.
