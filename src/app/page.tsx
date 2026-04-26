@@ -1,65 +1,71 @@
-import Image from "next/image";
+import Link from 'next/link';
+import { Hexagon, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="min-h-screen bg-paper">
+      <nav className="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2">
+          <Hexagon size={20} className="text-[var(--accent)]" strokeWidth={2.5} />
+          <span className="font-semibold tracking-tight">ArchitectAI</span>
+        </Link>
+        <div className="flex items-center gap-6">
+          <Link href="/pricing" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
+            Pricing
+          </Link>
+          <Link href="/sign-in" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
+            Sign in
+          </Link>
+          <Link
+            href="/sign-up"
+            className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-md bg-[var(--foreground)] text-[var(--background)] text-sm font-medium hover:opacity-90"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Get started
+            <ArrowRight size={13} />
+          </Link>
         </div>
-      </main>
-    </div>
+      </nav>
+
+      <section className="max-w-4xl mx-auto px-6 pt-20 pb-24 text-center">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--hairline)] bg-white text-[10px] font-mono uppercase tracking-wider text-[var(--muted)] mb-8">
+          <Sparkles size={10} className="text-[var(--accent)]" />
+          Powered by Gemini 2.5 Pro
+        </div>
+        <h1 className="font-display text-7xl md:text-8xl leading-[0.92] mb-6">
+          Design architecture
+          <br />
+          <span className="font-display-italic text-[var(--accent)]">with AI</span>.
+        </h1>
+        <p className="text-base md:text-lg text-[var(--muted)] max-w-xl mx-auto leading-relaxed mb-10">
+          Describe your problem, pick your stack, and ship a reviewable diagram in seconds.
+          Built for engineering teams who think in systems.
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <Link
+            href="/sign-up"
+            className="inline-flex items-center gap-1.5 px-5 h-11 rounded-md bg-[var(--foreground)] text-[var(--background)] text-sm font-semibold hover:opacity-90"
+          >
+            Get started free
+            <ArrowRight size={14} />
+          </Link>
+          <Link
+            href="/pricing"
+            className="inline-flex items-center gap-1.5 px-5 h-11 rounded-md border border-[var(--foreground)] text-sm font-semibold hover:bg-[var(--foreground)] hover:text-[var(--background)] transition"
+          >
+            See pricing
+          </Link>
+        </div>
+      </section>
+
+      <footer className="border-t border-[var(--hairline)] py-8 mt-12">
+        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between text-[11px] text-[var(--muted)] font-mono">
+          <span>© 2026 ArchitectAI</span>
+          <div className="flex gap-5">
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/sign-in">Sign in</Link>
+          </div>
+        </div>
+      </footer>
+    </main>
   );
 }

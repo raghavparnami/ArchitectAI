@@ -9,9 +9,31 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.0.11",
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/ssr": "^0.10.0",
+    "@supabase/supabase-js": "^2.101.1",
+    "@tanstack/react-query": "^5.96.2",
+    "@trpc/client": "^11.16.0",
+    "@trpc/next": "^11.16.0",
+    "@trpc/react-query": "^11.16.0",
+    "@trpc/server": "^11.16.0",
+    "clsx": "^2.1.1",
+    "fast-xml-parser": "^5.5.10",
+    "html-to-image": "^1.11.13",
+    "immer": "^11.1.4",
+    "lucide-react": "^1.7.0",
+    "mermaid": "^11.14.0",
     "next": "16.2.2",
+    "perfect-freehand": "^1.2.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-hotkeys-hook": "^5.2.4",
+    "resend": "^6.10.0",
+    "stripe": "^22.0.0",
+    "tailwind-merge": "^3.5.0",
+    "zundo": "^2.3.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

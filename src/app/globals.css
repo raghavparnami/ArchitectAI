@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Editorial palette — warm cream / ink / burnt amber */
+  --background: #FBFAF6;
+  --surface:    #FFFFFF;
+  --foreground: #0E0F10;
+  --muted:      #6F6A60;
+  --subtle:     #E5E1D6;
+  --hairline:   #E8E4D8;
+  --accent:     #C7521B;
+  --accent-soft:#F5E9DF;
+
+  --color-bg-1: #FBFAF6;
+  --color-bg-2: #F5F2E9;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface:    var(--surface);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-muted:      var(--muted);
+  --color-subtle:     var(--subtle);
+  --color-hairline:   var(--hairline);
+  --color-accent:     var(--accent);
+  --color-accent-soft:var(--accent-soft);
+
+  --font-sans:  var(--font-geist-sans);
+  --font-mono:  var(--font-geist-mono);
+  --font-serif: var(--font-serif);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
-body {
+html, body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Editorial display class */
+.font-display {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+.font-display-italic {
+  font-family: var(--font-serif), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+/* Subtle paper texture for the app background */
+.bg-paper {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(199, 82, 27, 0.025), transparent 40%),
+    radial-gradient(circle at 80% 90%, rgba(14, 15, 16, 0.02), transparent 40%);
+}
+
+/* Hairline borders helper */
+.hairline {
+  border-color: var(--hairline);
+}
+
+/* Tabular numerals everywhere stats appear */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Marching ants on canvas connections */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -24; }
+}
+.flow-line {
+  stroke-dasharray: 8 4;
+  animation: flow-dash 1.4s linear infinite;
 }
