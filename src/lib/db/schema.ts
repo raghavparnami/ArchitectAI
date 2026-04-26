@@ -1,59 +1,34 @@
 import { sql } from 'drizzle-orm';
 import {
-  bigint,
-  boolean,
   index,
   integer,
-  jsonb,
-  pgEnum,
-  pgTable,
   primaryKey,
+  sqliteTable,
   text,
-  timestamp,
   uniqueIndex,
-  vector,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/sqlite-core';
 import type { Architecture } from '@/lib/architecture/schema';
 
-export const archLevel = pgEnum('arch_level', ['HLD', 'LLD']);
-export const archState = pgEnum('arch_state', [
-  'Draft',
-  'InReview',
-  'Approved',
-  'Superseded',
-]);
-export const decisionStatus = pgEnum('decision_status', [
-  'Proposed',
-  'Accepted',
-  'Superseded',
-]);
-export const reviewDecision = pgEnum('review_decision', [
-  'approved',
-  'rejected',
-  'changes_requested',
-]);
-export const llmProvider = pgEnum('llm_provider', [
-  'anthropic',
-  'openai',
-  'google',
-  'custom',
-]);
-export const artifactKind = pgEnum('artifact_kind', [
-  'rs',
-  'ds-hld',
-  'ds-lld',
-  'adr',
-  'jira',
-  'code',
-]);
-export const memberRole = pgEnum('member_role', [
+// ─── Enum-like literal unions (SQLite has no native enum type) ──────────────
+//
+// We declare these as TS const tuples so drizzle's `text({ enum })` gives
+// us compile-time + insert-time type narrowing. Adding a new value means
+// editing here AND deciding whether existing rows need a backfill.
+
+const ARCH_LEVELS = ['HLD', 'LLD'] as const;
+const ARCH_STATES = ['Draft', 'InReview', 'Approved', 'Superseded'] as const;
+const DECISION_STATUSES = ['Proposed', 'Accepted', 'Superseded'] as const;
+const REVIEW_DECISIONS = ['approved', 'rejected', 'changes_requested'] as const;
+const LLM_PROVIDERS = ['anthropic', 'openai', 'google', 'custom'] as const;
+const ARTIFACT_KINDS = ['rs', 'ds-hld', 'ds-lld', 'adr', 'jira', 'code'] as const;
+const MEMBER_ROLES = [
   'owner',
   'admin',
   'architect',
   'reviewer',
   'viewer',
-]);
-export const editTargetType = pgEnum('edit_target_type', [
+] as const;
+const EDIT_TARGET_TYPES = [
   'component',
   'connection',
   'datastore',
@@ -61,30 +36,42 @@ export const editTargetType = pgEnum('edit_target_type', [
   'nfr',
   'externalSystem',
   'useCase',
-]);
+] as const;
 
-// ─── Users mirror Clerk; we keep a row per user so we can FK from
+// Timestamps: store as ms-precision Unix epoch integers. Drizzle's
+// `timestamp_ms` mode hands us Date objects on read and converts back
+// transparently on write — same DX as Postgres `timestamp`.
+const tsNow = sql`(unixepoch() * 1000)`;
+
+// ─── Users mirror Clerk; one row per user we've seen so we can FK from
 //     workspace_members, projects.owner_id, etc. without joining Clerk.
-export const users = pgTable('users', {
+
+export const users = sqliteTable('users', {
   id: text('id').primaryKey(), // Clerk user_id
   email: text('email').notNull().unique(),
   displayName: text('display_name'),
   defaultWorkspaceId: text('default_workspace_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .default(tsNow),
 });
 
-export const workspaces = pgTable(
+export const workspaces = sqliteTable(
   'workspaces',
   {
     id: text('id').primaryKey(),
     clerkOrgId: text('clerk_org_id').notNull(),
     name: text('name').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
   },
-  (t) => [uniqueIndex('workspaces_clerk_org_id_idx').on(t.clerkOrgId)]
+  (t) => ({
+    clerkOrgIdIdx: uniqueIndex('workspaces_clerk_org_id_idx').on(t.clerkOrgId),
+  })
 );
 
-export const workspaceMembers = pgTable(
+export const workspaceMembers = sqliteTable(
   'workspace_members',
   {
     workspaceId: text('workspace_id')
@@ -93,13 +80,17 @@ export const workspaceMembers = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    role: memberRole('role').notNull().default('viewer'),
-    addedAt: timestamp('added_at', { withTimezone: true }).defaultNow().notNull(),
+    role: text('role', { enum: MEMBER_ROLES }).notNull().default('viewer'),
+    addedAt: integer('added_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
   },
-  (t) => [primaryKey({ columns: [t.workspaceId, t.userId] })]
+  (t) => ({
+    pk: primaryKey({ columns: [t.workspaceId, t.userId] }),
+  })
 );
 
-export const projects = pgTable(
+export const projects = sqliteTable(
   'projects',
   {
     id: text('id').primaryKey(),
@@ -111,49 +102,58 @@ export const projects = pgTable(
     ownerId: text('owner_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
   },
-  (t) => [index('projects_workspace_idx').on(t.workspaceId)]
+  (t) => ({
+    workspaceIdx: index('projects_workspace_idx').on(t.workspaceId),
+  })
 );
 
-// canonical jsonb stores the full Architecture object; we duplicate a few
-// hot fields (state, level, version, title) at the column level for query
-// performance. See lib/architecture/schema.ts for the canonical shape.
-export const architectures = pgTable(
+// `canonical` stores the full Architecture object as JSON-serialized text.
+// `text({ mode: 'json' })` round-trips through JSON.parse/stringify and
+// the `.$type<>()` annotation gives us nominal typing on read.
+export const architectures = sqliteTable(
   'architectures',
   {
     id: text('id').primaryKey(),
     projectId: text('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    level: archLevel('level').notNull(),
+    level: text('level', { enum: ARCH_LEVELS }).notNull(),
     parentArchitectureId: text('parent_architecture_id'),
     version: integer('version').notNull(),
-    state: archState('state').notNull().default('Draft'),
+    state: text('state', { enum: ARCH_STATES }).notNull().default('Draft'),
     title: text('title').notNull(),
-    canonical: jsonb('canonical').$type<Architecture>().notNull(),
+    canonical: text('canonical', { mode: 'json' })
+      .$type<Architecture>()
+      .notNull(),
     llmModel: text('llm_model'),
-    generationCostUsd: text('generation_cost_usd'), // numeric stored as text to avoid JS float drift
+    // SQLite has no decimal type. Store cost as text for exact arithmetic
+    // (e.g. "0.0231"); use Number() at read time when summing.
+    generationCostUsd: text('generation_cost_usd'),
     createdBy: text('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    approvedAt: timestamp('approved_at', { withTimezone: true }),
-    approvedBy: text('approved_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
+    approvedAt: integer('approved_at', { mode: 'timestamp_ms' }),
+    approvedBy: text('approved_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
   },
-  (t) => [
-    uniqueIndex('architectures_project_level_version_idx').on(
-      t.projectId,
-      t.level,
-      t.version
-    ),
-    index('architectures_parent_idx').on(t.parentArchitectureId),
-  ]
+  (t) => ({
+    projectLevelVersionIdx: uniqueIndex(
+      'architectures_project_level_version_idx'
+    ).on(t.projectId, t.level, t.version),
+    parentIdx: index('architectures_parent_idx').on(t.parentArchitectureId),
+  })
 );
 
-// Decisions are denormalized from canonical for queryability (ADR list views).
-export const decisions = pgTable(
+export const decisions = sqliteTable(
   'decisions',
   {
     id: text('id').primaryKey(),
@@ -163,38 +163,52 @@ export const decisions = pgTable(
     question: text('question').notNull(),
     chosen: text('chosen').notNull(),
     rationale: text('rationale').notNull(),
-    status: decisionStatus('status').notNull().default('Proposed'),
+    status: text('status', { enum: DECISION_STATUSES })
+      .notNull()
+      .default('Proposed'),
     position: integer('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
   },
-  (t) => [index('decisions_architecture_idx').on(t.architectureId)]
+  (t) => ({
+    architectureIdx: index('decisions_architecture_idx').on(t.architectureId),
+  })
 );
 
-export const manualEdits = pgTable(
+export const manualEdits = sqliteTable(
   'manual_edits',
   {
     id: text('id').primaryKey(),
     architectureId: text('architecture_id')
       .notNull()
       .references(() => architectures.id, { onDelete: 'cascade' }),
-    targetType: editTargetType('target_type').notNull(),
+    targetType: text('target_type', { enum: EDIT_TARGET_TYPES }).notNull(),
     targetId: text('target_id').notNull(),
     field: text('field').notNull(),
-    value: jsonb('value').notNull(),
-    pinned: boolean('pinned').notNull().default(true),
+    value: text('value', { mode: 'json' }).notNull(),
+    pinned: integer('pinned', { mode: 'boolean' }).notNull().default(true),
     createdBy: text('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
   },
-  (t) => [
-    index('manual_edits_architecture_idx').on(t.architectureId),
-    index('manual_edits_target_idx').on(t.targetType, t.targetId),
-  ]
+  (t) => ({
+    architectureIdx: index('manual_edits_architecture_idx').on(
+      t.architectureId
+    ),
+    targetIdx: index('manual_edits_target_idx').on(t.targetType, t.targetId),
+  })
 );
 
-// pgvector for "find prior decisions on similar problems"
-export const citations = pgTable(
+// Citations live without embeddings on SQLite — pgvector isn't available
+// in vanilla SQLite. When we want semantic recall later, options:
+//   1. Switch to libSQL (Turso) which has sqlite-vec via extension.
+//   2. Store embeddings as JSON arrays and do cosine search in-memory.
+//   3. Migrate this table to Postgres + pgvector (revert M0 schema).
+export const citations = sqliteTable(
   'citations',
   {
     id: text('id').primaryKey(),
@@ -204,47 +218,45 @@ export const citations = pgTable(
     url: text('url').notNull(),
     title: text('title').notNull(),
     snippet: text('snippet').notNull(),
-    // 1536 = text-embedding-3-small / OpenAI default. Override if you switch
-    // embedding provider — drizzle's vector dimension is fixed at the schema.
-    embedding: vector('embedding', { dimensions: 1536 }),
-    retrievedAt: timestamp('retrieved_at', { withTimezone: true }).defaultNow().notNull(),
-    usedInDecisionId: text('used_in_decision_id').references(() => decisions.id, {
-      onDelete: 'set null',
-    }),
+    retrievedAt: integer('retrieved_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
+    usedInDecisionId: text('used_in_decision_id').references(
+      () => decisions.id,
+      { onDelete: 'set null' }
+    ),
   },
-  (t) => [
-    index('citations_architecture_idx').on(t.architectureId),
-    // ivfflat index added in raw SQL migration — drizzle-kit can't emit it yet.
-  ]
+  (t) => ({
+    architectureIdx: index('citations_architecture_idx').on(t.architectureId),
+  })
 );
 
-export const userLlmKeys = pgTable(
+export const userLlmKeys = sqliteTable(
   'user_llm_keys',
   {
     id: text('id').primaryKey(),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    provider: llmProvider('provider').notNull(),
+    provider: text('provider', { enum: LLM_PROVIDERS }).notNull(),
     label: text('label').notNull(),
-    // libsodium secretbox ciphertext + nonce, base64-encoded so we don't
-    // depend on driver-specific bytea handling.
+    // libsodium secretbox ciphertext + nonce, base64-encoded.
     encryptedKey: text('encrypted_key').notNull(),
     nonce: text('nonce').notNull(),
-    baseUrl: text('base_url'), // for provider='custom'
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    baseUrl: text('base_url'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
   },
-  (t) => [
-    uniqueIndex('user_llm_keys_user_provider_label_idx').on(
-      t.userId,
-      t.provider,
-      t.label
-    ),
-  ]
+  (t) => ({
+    userProviderLabelIdx: uniqueIndex(
+      'user_llm_keys_user_provider_label_idx'
+    ).on(t.userId, t.provider, t.label),
+  })
 );
 
-export const reviews = pgTable(
+export const reviews = sqliteTable(
   'reviews',
   {
     id: text('id').primaryKey(),
@@ -254,36 +266,42 @@ export const reviews = pgTable(
     reviewerId: text('reviewer_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    decision: reviewDecision('decision').notNull(),
+    decision: text('decision', { enum: REVIEW_DECISIONS }).notNull(),
     comments: text('comments'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
   },
-  (t) => [index('reviews_architecture_idx').on(t.architectureId)]
+  (t) => ({
+    architectureIdx: index('reviews_architecture_idx').on(t.architectureId),
+  })
 );
 
-export const generatedArtifacts = pgTable(
+export const generatedArtifacts = sqliteTable(
   'generated_artifacts',
   {
     id: text('id').primaryKey(),
     architectureId: text('architecture_id')
       .notNull()
       .references(() => architectures.id, { onDelete: 'cascade' }),
-    kind: artifactKind('kind').notNull(),
+    kind: text('kind', { enum: ARTIFACT_KINDS }).notNull(),
     storagePath: text('storage_path').notNull(),
     contentHash: text('content_hash').notNull(),
-    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
   },
-  (t) => [
-    index('generated_artifacts_architecture_idx').on(t.architectureId),
-    uniqueIndex('generated_artifacts_kind_hash_idx').on(
+  (t) => ({
+    architectureIdx: index('generated_artifacts_architecture_idx').on(
+      t.architectureId
+    ),
+    kindHashIdx: uniqueIndex('generated_artifacts_kind_hash_idx').on(
       t.architectureId,
       t.kind,
       t.contentHash
     ),
-  ]
+  })
 );
 
-// Re-export the SQL helper so downstream code that mixes Drizzle queries with
-// raw SQL fragments doesn't need a separate import.
 export { sql };

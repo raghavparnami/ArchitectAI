@@ -2,83 +2,29 @@ import 'server-only';
 import type { Citation } from '@/lib/architecture/schema';
 
 /**
- * Thin wrapper around Tavily's Search API. We talk to the REST endpoint
- * directly to avoid taking a hard dep on the still-young npm SDK.
+ * Research stub. The SQLite-Gemini prototype ships without an external
+ * web search provider — the LLM falls back to first-principles
+ * reasoning per the HLD prompt's "no prior research snippets" branch.
  *
- * Docs: https://docs.tavily.com/docs/rest-api/api-reference
+ * To wire real research later, replace this file with one of:
+ *
+ *   1. Gemini grounding with Google Search — Vercel AI SDK supports it
+ *      via `google.tools.googleSearch()` on the request, no extra key
+ *      needed beyond GOOGLE_GENERATIVE_AI_API_KEY. Pull groundedSources
+ *      out of the response and map to Citation[].
+ *
+ *   2. Tavily — set TAVILY_API_KEY and POST to api.tavily.com/search.
+ *
+ *   3. Brave Search API — free 2k/month at api.search.brave.com.
+ *
+ *   4. Exa — semantic search, free tier at api.exa.ai.
+ *
+ * The function signature MUST stay the same so callers (Inngest jobs,
+ * the regenerate flow) don't have to change.
  */
 
-export type TavilySearchOptions = {
-  query: string;
-  /** 'basic' is faster + cheaper; 'advanced' returns longer snippets. */
-  searchDepth?: 'basic' | 'advanced';
-  maxResults?: number;
-  includeDomains?: string[];
-  excludeDomains?: string[];
-};
-
-export type TavilyResult = {
-  url: string;
-  title: string;
-  content: string;
-  score: number;
-};
-
-export async function tavilySearch(opts: TavilySearchOptions): Promise<TavilyResult[]> {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) {
-    throw new Error('TAVILY_API_KEY is not set');
-  }
-
-  const res = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      query: opts.query,
-      search_depth: opts.searchDepth ?? 'advanced',
-      max_results: opts.maxResults ?? 5,
-      include_domains: opts.includeDomains,
-      exclude_domains: opts.excludeDomains,
-    }),
-    // Tavily occasionally takes ~20s on advanced searches; raise the
-    // default fetch timeout via an AbortController.
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Tavily search failed: ${res.status} ${body.slice(0, 200)}`);
-  }
-
-  const json = (await res.json()) as { results?: TavilyResult[] };
-  return json.results ?? [];
-}
-
-/**
- * Search and convert results into Citation rows. IDs are deterministic
- * (sha-1 of url + retrieval timestamp) so dedupe is straightforward.
- */
-export async function searchForCitations(query: string): Promise<Citation[]> {
-  const results = await tavilySearch({ query, maxResults: 6 });
-  const retrievedAt = new Date().toISOString();
-  return results.map((r, i) => ({
-    id: `cit_${shortHash(r.url)}_${i}`,
-    url: r.url,
-    title: r.title.slice(0, 200),
-    // Tavily content is usually a paragraph or two; clip for prompt budget.
-    snippet: r.content.slice(0, 600),
-    retrievedAt,
-  }));
-}
-
-function shortHash(s: string): string {
-  // Cheap deterministic hash. NOT cryptographic — it's only an id.
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h).toString(36).padStart(7, '0').slice(0, 7);
+export async function searchForCitations(_query: string): Promise<Citation[]> {
+  // No-op until a research provider is configured. Returning an empty
+  // array is the same code path the LLM uses when Tavily is down.
+  return [];
 }

@@ -146,7 +146,7 @@ export const architecturesRouter = router({
         techHints: z.array(z.string()).optional(),
         provider: z
           .enum(['anthropic', 'openai', 'google', 'custom'])
-          .default('anthropic'),
+          .default('google'),
         modelId: z.string().optional(),
       })
     )
@@ -178,7 +178,7 @@ export const architecturesRouter = router({
         instruction: z.string().min(3).max(2000),
         provider: z
           .enum(['anthropic', 'openai', 'google', 'custom'])
-          .default('anthropic'),
+          .default('google'),
         modelId: z.string().optional(),
       })
     )

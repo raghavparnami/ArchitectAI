@@ -1,6 +1,7 @@
 import 'server-only';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import path from 'node:path';
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -8,26 +9,31 @@ if (!databaseUrl) {
   throw new Error('DATABASE_URL is not set. See .env.example.');
 }
 
-// Reuse the connection across hot reloads in dev. Without this, every
-// request opens a new pool and Postgres eventually rejects with too-many-
-// connections.
+// Resolve relative paths from the project root so `npm run db:studio` and
+// `next dev` agree on which file they're talking to even when the cwd
+// differs.
+const dbPath = databaseUrl.startsWith('/')
+  ? databaseUrl
+  : path.resolve(process.cwd(), databaseUrl);
+
 declare global {
-  var __pg_client__: ReturnType<typeof postgres> | undefined;
+  var __sqlite_client__: Database.Database | undefined;
 }
 
 const client =
-  globalThis.__pg_client__ ??
-  postgres(databaseUrl, {
-    // Supabase pooler closes idle TLS connections after ~10 minutes; we
-    // keep the pool small in serverless environments.
-    max: process.env.NODE_ENV === 'production' ? 1 : 10,
-    idle_timeout: 20,
-    connect_timeout: 10,
-    prepare: false, // pgbouncer in transaction mode does not support prepared statements
-  });
+  globalThis.__sqlite_client__ ??
+  (() => {
+    const db = new Database(dbPath);
+    // WAL mode = better concurrent read/write semantics for dev. Foreign
+    // keys aren't enforced by default in SQLite — turn them on so our
+    // ON DELETE CASCADE rules actually fire.
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    return db;
+  })();
 
 if (process.env.NODE_ENV !== 'production') {
-  globalThis.__pg_client__ = client;
+  globalThis.__sqlite_client__ = client;
 }
 
 export const db = drizzle(client, { schema });

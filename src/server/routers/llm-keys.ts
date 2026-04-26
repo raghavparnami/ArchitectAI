@@ -85,6 +85,7 @@ export const llmKeysRouter = router({
             eq(schema.userLlmKeys.userId, ctx.userId)
           )
         );
-      return { ok: true as const, deleted: result.count ?? 0 };
+      // better-sqlite3 returns { changes, lastInsertRowid }
+      return { ok: true as const, deleted: result.changes ?? 0 };
     }),
 });

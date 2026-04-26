@@ -175,7 +175,9 @@ export const generateHldFn = inngest.createFunction(
         );
       }
 
-      // Persist citations (without embeddings — embedding job is async).
+      // Persist citations as plain rows. Embeddings are not stored in the
+      // SQLite prototype; semantic recall over citations is a follow-up
+      // (sqlite-vec on Turso, or migrate to Postgres + pgvector).
       if (citations.length > 0) {
         await db.insert(schema.citations).values(
           citations.map((c) => ({
