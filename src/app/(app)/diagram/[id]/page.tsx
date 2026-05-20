@@ -23,8 +23,10 @@ import {
   Shapes as ShapesIcon,
   Sparkles,
   Share2,
+  AlignVerticalSpaceAround,
 } from 'lucide-react';
 import { StatusBadge } from '@/components/diagram/StatusBadge';
+import { graphLayout } from '@/lib/graph-layout';
 import { clsx } from 'clsx';
 
 type LeftMode = 'palette' | 'chat' | null;
@@ -46,6 +48,25 @@ export default function DiagramEditorPage({
   const setSuggestions = useCanvasStore((s) => s.setSuggestions);
   const setDiagramTitle = useCanvasStore((s) => s.setDiagramTitle);
   const title = useCanvasStore((s) => s.diagramTitle);
+  const nodes = useCanvasStore((s) => s.nodes);
+  const connections = useCanvasStore((s) => s.connections);
+  const groups = useCanvasStore((s) => s.groups);
+  const strokes = useCanvasStore((s) => s.strokes);
+
+  // One-click cleanup: run hierarchical DAG layout on the current canvas
+  // contents. Useful for diagrams that came back from older generations
+  // with tangled positions, or after manual exploration.
+  const relayout = () => {
+    if (nodes.length === 0) return;
+    const laid = graphLayout(nodes, connections);
+    loadVersion(laid, connections, groups, strokes);
+    updateSnapshot(id, {
+      nodes: laid,
+      connections,
+      groups,
+      strokes,
+    });
+  };
 
   const [loaded, setLoaded] = useState(false);
   const [leftMode, setLeftMode] = useState<LeftMode>('palette');
@@ -159,6 +180,15 @@ export default function DiagramEditorPage({
         }
         rightSlot={
           <>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={relayout}
+              title="Re-arrange the diagram top-to-bottom by data flow"
+            >
+              <AlignVerticalSpaceAround size={14} />
+              Tidy
+            </Button>
             <Button
               size="sm"
               variant="secondary"

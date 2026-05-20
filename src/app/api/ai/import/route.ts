@@ -8,6 +8,7 @@ import { parseDrawioXml } from '@/lib/import/parseDrawioXml';
 import { DiagramConnection, DiagramNode, ImportSource } from '@/lib/types';
 import { sanitizeLabel, sanitizeEdgeLabel } from '@/lib/labels';
 import { autoLayout } from '@/lib/layout';
+import { graphLayout } from '@/lib/graph-layout';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -94,10 +95,17 @@ export async function POST(req: NextRequest) {
     if (source === 'xml') {
       const { nodes, connections } = parseDrawioXml(payload);
       const stamped = stamp(nodes);
+      const stampedConns = stamp(connections, 'conn') as DiagramConnection[];
+      // Graph-aware layout when we know the edges; band fallback when we
+      // don't (e.g. orphan-node imports).
+      const laidOut =
+        stampedConns.length > 0
+          ? graphLayout(stamped, stampedConns)
+          : autoLayout(stamped);
       return NextResponse.json({
         title: 'Imported diagram',
-        nodes: autoLayout(stamped),
-        connections: stamp(connections, 'conn'),
+        nodes: laidOut,
+        connections: stampedConns,
         suggestions: [],
         sourceDetected: 'xml',
       });
@@ -105,10 +113,15 @@ export async function POST(req: NextRequest) {
     if (source === 'mermaid') {
       const { nodes, connections } = parseMermaid(payload);
       const stamped = stamp(nodes);
+      const stampedConns = stamp(connections, 'conn') as DiagramConnection[];
+      const laidOut =
+        stampedConns.length > 0
+          ? graphLayout(stamped, stampedConns)
+          : autoLayout(stamped);
       return NextResponse.json({
         title: 'Imported diagram',
-        nodes: autoLayout(stamped),
-        connections: stamp(connections, 'conn'),
+        nodes: laidOut,
+        connections: stampedConns,
         suggestions: [],
         sourceDetected: 'mermaid',
       });
@@ -121,10 +134,15 @@ export async function POST(req: NextRequest) {
           ? parsed.connections
           : [];
         const stamped = stamp(nodes);
+        const stampedConns = stamp(connections, 'conn') as DiagramConnection[];
+        const laidOut =
+          stampedConns.length > 0
+            ? graphLayout(stamped, stampedConns)
+            : autoLayout(stamped);
         return NextResponse.json({
           title: parsed.title ?? 'Imported diagram',
-          nodes: autoLayout(stamped),
-          connections: stamp(connections, 'conn'),
+          nodes: laidOut,
+          connections: stampedConns,
           suggestions: [],
           sourceDetected: 'json',
         });
@@ -193,9 +211,9 @@ function postProcessAiResult(parsed: any, source: ImportSource) {
     height: 96,
     desc: String(n.desc || '').slice(0, 80),
   }));
-  const nodes = autoLayout(rawNodes);
-
-  const labelToId = new Map(nodes.map((n) => [n.label.toLowerCase(), n.id]));
+  // Resolve label-keyed edges to id-keyed edges *before* layout so we can
+  // feed both into graphLayout for a hierarchical result.
+  const labelToId = new Map(rawNodes.map((n) => [n.label.toLowerCase(), n.id]));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const connections: DiagramConnection[] = (parsed.connections as any[])
     .map((c, i) => {
@@ -212,6 +230,12 @@ function postProcessAiResult(parsed: any, source: ImportSource) {
       };
     })
     .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  // Graph-aware layout when edges exist; band fallback otherwise.
+  const nodes =
+    connections.length > 0
+      ? graphLayout(rawNodes, connections)
+      : autoLayout(rawNodes);
 
   return {
     title: sanitizeLabel(parsed.title) || 'Imported diagram',

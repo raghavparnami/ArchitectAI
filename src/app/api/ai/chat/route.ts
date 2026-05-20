@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { safeGenerateObject } from '@/lib/llm/safeGenerate';
+import { graphLayout } from '@/lib/graph-layout';
 import { TECH_CATALOG } from '@/lib/tech-catalog';
 import { ChatMessage, DiagramConnection, DiagramNode } from '@/lib/types';
 import { sanitizeLabel, sanitizeEdgeLabel } from '@/lib/labels';
@@ -183,9 +184,18 @@ export async function POST(req: NextRequest) {
         label: sanitizeEdgeLabel(c.label ?? ''),
       }));
 
+    // Lay the diagram out hierarchically (top → bottom DAG) when there are
+    // edges to follow. Without graph-aware layout, LLM-suggested positions
+    // produce tangled bezier curves crossing nodes. Review mode never
+    // re-layouts — the user is inspecting an existing design.
+    const finalNodes =
+      mode === 'review' || outConns.length === 0
+        ? outNodes
+        : graphLayout(outNodes, outConns);
+
     return NextResponse.json({
       reply: String(parsed.reply || (mode === 'review' ? 'Reviewed.' : 'Updated.')),
-      nodes: outNodes,
+      nodes: finalNodes,
       connections: outConns,
       suggestions: Array.isArray(parsed.suggestions)
         ? parsed.suggestions.slice(0, 3).map((s) => String(s))
