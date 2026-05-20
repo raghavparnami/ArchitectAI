@@ -650,34 +650,46 @@ export function Canvas({ diagramId, readOnly = false, onSave }: CanvasProps) {
   );
 
   // ─── Background interactions ──────────────────────────────────────────
+  // Whiteboard-style direct manipulation:
+  //   • plain left-drag on empty area → pan the canvas (Figma/Miro default)
+  //   • Shift + left-drag             → marquee select
+  //   • Middle-click / Alt-drag / pan-tool → also pan (kept for power users)
+  //   • Plain click (no drag)         → clear selection
   const handleBackgroundMouseDown = (e: RM) => {
-    // Pan: middle-click, pan tool, or Alt+left-drag
-    if (e.button === 1 || tool === 'pan' || (e.button === 0 && e.altKey)) {
+    // Always cancel an in-progress connection on background click first.
+    if (connectingFromId) {
+      setConnectingFrom(null);
+      return;
+    }
+
+    // Shift+drag explicitly starts a marquee selection box.
+    if (e.button === 0 && e.shiftKey) {
+      const start = toCanvasCoords(e.clientX, e.clientY);
+      marqueeRef.current = {
+        startCanvasX: start.x,
+        startCanvasY: start.y,
+        additive: true,
+        initialSelection: [...selectedIds],
+      };
+      setMarquee({ x: start.x, y: start.y, w: 0, h: 0 });
+      return;
+    }
+
+    // Everything else on the background — including a plain left-click drag —
+    // pans the canvas. This is what users expect from whiteboard tools.
+    if (e.button === 0 || e.button === 1 || tool === 'pan') {
       panRef.current = {
         startX: e.clientX,
         startY: e.clientY,
         panX: pan.x,
         panY: pan.y,
       };
-      return;
+      // Clear selection on plain left-click pan (matches the old "click empty
+      // area to deselect" feel). Middle-click and pan-tool drags don't.
+      if (e.button === 0 && tool !== 'pan' && !e.altKey) {
+        clearSelection();
+      }
     }
-
-    if (connectingFromId) {
-      setConnectingFrom(null);
-      return;
-    }
-
-    // Begin marquee selection
-    const start = toCanvasCoords(e.clientX, e.clientY);
-    marqueeRef.current = {
-      startCanvasX: start.x,
-      startCanvasY: start.y,
-      additive: e.shiftKey,
-      initialSelection: e.shiftKey ? [...selectedIds] : [],
-    };
-    setMarquee({ x: start.x, y: start.y, w: 0, h: 0 });
-
-    if (!e.shiftKey) clearSelection();
   };
 
   // ─── Wheel zoom ───────────────────────────────────────────────────────
@@ -848,7 +860,9 @@ export function Canvas({ diagramId, readOnly = false, onSave }: CanvasProps) {
       onWheel={handleWheel}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      style={{ cursor: tool === 'pan' ? 'grab' : undefined }}
+      // Default cursor reflects the new pan-on-drag behavior. Node elements
+      // override on hover via their own cursor styles.
+      style={{ cursor: 'grab' }}
     >
       <div className="canvas-ui-overlay">
         <Toolbar onFitToScreen={fitToScreen} onExport={exportDiagram} />

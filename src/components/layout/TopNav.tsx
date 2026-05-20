@@ -2,13 +2,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode } from 'react';
-import { Hexagon, LayoutDashboard, Settings, Sparkles } from 'lucide-react';
+import { Code2, Hexagon, LayoutDashboard, Settings, Sparkles } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
 import { clsx } from 'clsx';
 import { useDiagramsStore } from '@/stores/diagrams.store';
 
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard', label: 'Architect',  icon: LayoutDashboard },
+  { href: '/codescan',  label: 'CodeScan',  icon: Code2 },
   { href: '/settings',  label: 'Settings',  icon: Settings },
 ];
 

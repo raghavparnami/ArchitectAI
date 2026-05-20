@@ -15,7 +15,7 @@ type Events = {
       techHints?: string[];
       parentArchitectureId?: string;
       requestedBy: string;
-      provider: 'anthropic' | 'openai' | 'google' | 'custom';
+      provider: 'anthropic' | 'openai' | 'openrouter' | 'google' | 'custom';
       modelId?: string;
     };
   };
@@ -24,7 +24,7 @@ type Events = {
       architectureId: string;
       instruction: string;
       requestedBy: string;
-      provider: 'anthropic' | 'openai' | 'google' | 'custom';
+      provider: 'anthropic' | 'openai' | 'openrouter' | 'google' | 'custom';
       modelId?: string;
     };
   };

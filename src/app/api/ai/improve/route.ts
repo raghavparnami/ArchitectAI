@@ -1,48 +1,34 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+// DEMO BYPASS — Clerk auth import kept commented for easy restore.
+// import { auth } from '@clerk/nextjs/server';
+import { z } from 'zod';
+import { safeGenerateObject } from '@/lib/llm/safeGenerate';
 import { TECH_CATALOG } from '@/lib/tech-catalog';
 import { DiagramConnection, DiagramNode } from '@/lib/types';
 import { sanitizeLabel, sanitizeEdgeLabel } from '@/lib/labels';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-
-const RESPONSE_SCHEMA = {
-  type: SchemaType.OBJECT,
-  properties: {
-    nodes: {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          id: { type: SchemaType.STRING },
-          label: { type: SchemaType.STRING },
-          techId: { type: SchemaType.STRING },
-          type: { type: SchemaType.STRING },
-          x: { type: SchemaType.NUMBER },
-          y: { type: SchemaType.NUMBER },
-          desc: { type: SchemaType.STRING },
-        },
-        required: ['id', 'label', 'type', 'x', 'y'],
-      },
-    },
-    connections: {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          id: { type: SchemaType.STRING },
-          fromNodeId: { type: SchemaType.STRING },
-          toNodeId: { type: SchemaType.STRING },
-          label: { type: SchemaType.STRING },
-        },
-        required: ['id', 'fromNodeId', 'toNodeId'],
-      },
-    },
-    changeSummary: { type: SchemaType.STRING },
-  },
-  required: ['nodes', 'connections', 'changeSummary'],
-};
+const improveSchema = z.object({
+  nodes: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      techId: z.string().optional(),
+      type: z.string(),
+      x: z.number(),
+      y: z.number(),
+      desc: z.string().optional(),
+    })
+  ),
+  connections: z.array(
+    z.object({
+      id: z.string(),
+      fromNodeId: z.string(),
+      toNodeId: z.string(),
+      label: z.string().optional(),
+    })
+  ),
+  changeSummary: z.string(),
+});
 
 const SYSTEM_PROMPT = `You are a senior software architect refining a system architecture by applying a list of recommendations.
 
@@ -65,12 +51,9 @@ interface ImproveBody {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
-  }
+  // DEMO BYPASS — original auth check:
+  // const { userId } = await auth();
+  // if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: ImproveBody;
   try {
@@ -98,47 +81,55 @@ export async function POST(req: NextRequest) {
   ].join('\n');
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-pro',
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: {
-        responseMimeType: 'application/json',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        responseSchema: RESPONSE_SCHEMA as any,
-        temperature: 0.3,
-      },
+    const { object: parsed } = await safeGenerateObject({
+      schema: improveSchema,
+      system: SYSTEM_PROMPT,
+      prompt: userPrompt,
+      temperature: 0.3,
     });
 
-    const result = await model.generateContent(userPrompt);
-    const parsed = JSON.parse(result.response.text());
-
     const validTechIds = new Set(TECH_CATALOG.map((t) => t.id));
-    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    const clamp = (v: number, lo: number, hi: number) =>
+      Math.max(lo, Math.min(hi, v));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const outNodes: DiagramNode[] = (parsed.nodes as any[]).map((n, i) => ({
-      id: String(n.id || `node_${Date.now()}_${i}`),
-      label: sanitizeLabel(n.label) || 'Node',
-      techId: n.techId && validTechIds.has(n.techId) ? n.techId : undefined,
-      type: n.type || 'service',
-      x: clamp(Number(n.x) || 100, 80, 700),
-      y: clamp(Number(n.y) || 100, 60, 560),
-      width: 180,
-      height: 96,
-      desc: String(n.desc || '').slice(0, 80),
-    }));
+    // Preserve user's existing layout: pin x/y of any node whose id matches a
+    // pre-existing one. The LLM often re-flows the whole canvas even when we
+    // tell it not to — this enforces the contract deterministically.
+    const originalById = new Map(nodes.map((n) => [n.id, n]));
+
+    const outNodes: DiagramNode[] = parsed.nodes.map((n, i) => {
+      const orig = n.id ? originalById.get(n.id) : undefined;
+      const id = String(n.id || `node_${Date.now()}_${i}`);
+      return {
+        id,
+        label: sanitizeLabel(n.label) || 'Node',
+        techId: n.techId && validTechIds.has(n.techId) ? n.techId : undefined,
+        type: (n.type || 'service') as DiagramNode['type'],
+        // Existing node → keep its original x/y/width/height untouched.
+        // New node → use whatever the LLM proposed, clamped to canvas bounds.
+        x: orig ? orig.x : clamp(Number(n.x) || 100, 80, 700),
+        y: orig ? orig.y : clamp(Number(n.y) || 100, 60, 560),
+        width: orig?.width ?? 180,
+        height: orig?.height ?? 96,
+        desc: String(n.desc || '').slice(0, 80),
+      };
+    });
 
     const validIds = new Set(outNodes.map((n) => n.id));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const outConns: DiagramConnection[] = (parsed.connections as any[])
-      .filter((c) => validIds.has(c.fromNodeId) && validIds.has(c.toNodeId) && c.fromNodeId !== c.toNodeId)
+    const outConns: DiagramConnection[] = parsed.connections
+      .filter(
+        (c) =>
+          validIds.has(c.fromNodeId) &&
+          validIds.has(c.toNodeId) &&
+          c.fromNodeId !== c.toNodeId
+      )
       .map((c, i) => ({
         id: String(c.id || `conn_${Date.now()}_${i}`),
         fromNodeId: c.fromNodeId,
         toNodeId: c.toNodeId,
         fromPort: 's' as const,
         toPort: 'n' as const,
-        label: sanitizeEdgeLabel(c.label),
+        label: sanitizeEdgeLabel(c.label ?? ''),
       }));
 
     return NextResponse.json({
@@ -148,6 +139,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error('Improve error:', err);
-    return NextResponse.json({ error: 'Improve failed' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Improve failed';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

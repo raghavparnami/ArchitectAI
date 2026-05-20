@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { Canvas } from '@/components/canvas/Canvas';
 import { ComponentPalette } from '@/components/canvas/ComponentPalette';
 import { PropertiesPopup } from '@/components/canvas/PropertiesPopup';
-import { EvaluationPanel } from '@/components/canvas/EvaluationPanel';
+// EvaluationPanel has been folded into EditorChatPanel's Review tab — the
+// standalone slide-over modal is no longer mounted. Kept on disk for now in
+// case we need to roll back, but unused.
+// import { EvaluationPanel } from '@/components/canvas/EvaluationPanel';
 import { EditorChatPanel } from '@/components/canvas/EditorChatPanel';
 import { ShareModal } from '@/components/diagram/ShareModal';
 import { TopNav } from '@/components/layout/TopNav';
@@ -46,7 +49,9 @@ export default function DiagramEditorPage({
 
   const [loaded, setLoaded] = useState(false);
   const [leftMode, setLeftMode] = useState<LeftMode>('palette');
-  const [evalOpen, setEvalOpen] = useState(false);
+  // Controls which tab the EditorChatPanel opens to. Clicking "Improve" in the
+  // top nav flips this to 'review' and ensures the chat panel is visible.
+  const [chatTab, setChatTab] = useState<'design' | 'review'>('design');
 
   // Load diagram into canvas store
   useEffect(() => {
@@ -125,14 +130,21 @@ export default function DiagramEditorPage({
               <ShapesIcon size={14} />
             </button>
             <button
-              onClick={() => setLeftMode((m) => (m === 'chat' ? null : 'chat'))}
+              onClick={() => {
+                if (leftMode === 'chat') {
+                  setLeftMode(null);
+                } else {
+                  setChatTab('design');
+                  setLeftMode('chat');
+                }
+              }}
               className={clsx(
                 'inline-flex items-center gap-1.5 px-2.5 h-8 rounded-md border text-[11px] font-mono font-semibold uppercase tracking-wider transition',
                 leftMode === 'chat'
                   ? 'bg-[var(--accent)] border-[var(--accent)] text-white shadow-sm'
                   : 'bg-[var(--accent-soft)] border-[var(--accent)]/40 text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white'
               )}
-              title="AI design chat — modify the architecture conversationally"
+              title="AI panel — Build (chat to redesign) or Review (run evaluation)"
             >
               <Sparkles size={12} />
               AI Chat
@@ -147,7 +159,14 @@ export default function DiagramEditorPage({
         }
         rightSlot={
           <>
-            <Button size="sm" variant="secondary" onClick={() => setEvalOpen(true)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setLeftMode('chat');
+                setChatTab('review');
+              }}
+            >
               <Wand2 size={14} />
               Improve
             </Button>
@@ -168,7 +187,12 @@ export default function DiagramEditorPage({
           <ComponentPalette open={true} onToggle={() => setLeftMode(null)} />
         )}
         {leftMode === 'chat' && (
-          <EditorChatPanel diagramId={id} onClose={() => setLeftMode(null)} />
+          <EditorChatPanel
+            diagramId={id}
+            tab={chatTab}
+            onTabChange={setChatTab}
+            onClose={() => setLeftMode(null)}
+          />
         )}
         <div className="flex-1 relative min-w-0">
           <Canvas
@@ -183,7 +207,6 @@ export default function DiagramEditorPage({
             }
           />
           <PropertiesPopup />
-          <EvaluationPanel open={evalOpen} onClose={() => setEvalOpen(false)} />
         </div>
       </div>
     </>

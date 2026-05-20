@@ -1,34 +1,25 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+// DEMO BYPASS — Clerk auth import kept commented for easy restore.
+// import { auth } from '@clerk/nextjs/server';
+import { z } from 'zod';
+import { safeGenerateObject } from '@/lib/llm/safeGenerate';
 import { DiagramNode, DiagramConnection } from '@/lib/types';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-
-const RESPONSE_SCHEMA = {
-  type: SchemaType.OBJECT,
-  properties: {
-    overallScore: { type: SchemaType.NUMBER },
-    summary: { type: SchemaType.STRING },
-    dimensions: {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          name: { type: SchemaType.STRING },
-          score: { type: SchemaType.NUMBER },
-          rationale: { type: SchemaType.STRING },
-          findings: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-        },
-        required: ['name', 'score', 'rationale', 'findings'],
-      },
-    },
-    risks: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-    recommendations: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-    estimatedMonthlyCost: { type: SchemaType.STRING },
-  },
-  required: ['overallScore', 'summary', 'dimensions', 'risks', 'recommendations'],
-};
+const evalSchema = z.object({
+  overallScore: z.number(),
+  summary: z.string(),
+  dimensions: z.array(
+    z.object({
+      name: z.string(),
+      score: z.number(),
+      rationale: z.string(),
+      findings: z.array(z.string()),
+    })
+  ),
+  risks: z.array(z.string()),
+  recommendations: z.array(z.string()),
+  estimatedMonthlyCost: z.string().optional(),
+});
 
 const SYSTEM_PROMPT = `You are a principal-level software architect performing a technical review of a system architecture diagram.
 
@@ -61,12 +52,9 @@ interface EvalBody {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
-  }
+  // DEMO BYPASS — original auth check:
+  // const { userId } = await auth();
+  // if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: EvalBody;
   try {
@@ -81,10 +69,15 @@ export async function POST(req: NextRequest) {
   }
 
   const userPrompt = [
-    problemStatement ? `Original problem: ${problemStatement}` : 'No original problem statement provided.',
+    problemStatement
+      ? `Original problem: ${problemStatement}`
+      : 'No original problem statement provided.',
     '',
     `Nodes (${nodes.length}):`,
-    ...nodes.map((n) => `  - ${n.label} [${n.type}${n.techId ? ` · ${n.techId}` : ''}]${n.desc ? ` — ${n.desc}` : ''}`),
+    ...nodes.map(
+      (n) =>
+        `  - ${n.label} [${n.type}${n.techId ? ` · ${n.techId}` : ''}]${n.desc ? ` — ${n.desc}` : ''}`
+    ),
     '',
     `Connections (${connections.length}):`,
     ...connections.map((c) => {
@@ -95,22 +88,16 @@ export async function POST(req: NextRequest) {
   ].join('\n');
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-pro',
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: {
-        responseMimeType: 'application/json',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        responseSchema: RESPONSE_SCHEMA as any,
-        temperature: 0.3,
-      },
+    const { object, source } = await safeGenerateObject({
+      schema: evalSchema,
+      system: SYSTEM_PROMPT,
+      prompt: userPrompt,
+      temperature: 0.3,
     });
-
-    const result = await model.generateContent(userPrompt);
-    const parsed = JSON.parse(result.response.text());
-    return NextResponse.json(parsed);
+    return NextResponse.json({ ...object, source });
   } catch (err) {
     console.error('Evaluate error:', err);
-    return NextResponse.json({ error: 'Evaluation failed' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Evaluation failed';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

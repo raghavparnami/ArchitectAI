@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+// DEMO BYPASS — Clerk auth import kept commented for easy restore.
+// import { auth } from '@clerk/nextjs/server';
 import { TECH_CATALOG } from '@/lib/tech-catalog';
 import { parseMermaid } from '@/lib/import/parseMermaid';
 import { parseDrawioXml } from '@/lib/import/parseDrawioXml';
@@ -69,12 +70,12 @@ interface ImportBody {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // DEMO BYPASS — original auth check:
+  // const { userId } = await auth();
+  // if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
-  }
+  // Mermaid / XML / JSON imports parse locally and don't need an LLM key.
+  // Only image imports below call Gemini Vision (no DeepSeek equivalent yet).
 
   let body: ImportBody;
   try {

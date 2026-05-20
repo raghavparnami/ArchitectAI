@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+// DEMO BYPASS — Clerk auth import kept commented for easy restore.
+// import { auth } from '@clerk/nextjs/server';
 import { TECH_CATALOG } from '@/lib/tech-catalog';
 import { AIGenerationRequest } from '@/lib/types';
 import { sanitizeLabel, sanitizeEdgeLabel } from '@/lib/labels';
@@ -64,8 +65,9 @@ Rules:
 - suggestions: exactly 3 actionable architectural improvements specific to this design, max 15 words each.`;
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // DEMO BYPASS — original auth check:
+  // const { userId } = await auth();
+  // if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(

@@ -1,7 +1,18 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Loader2, Sparkles, ArrowRight } from 'lucide-react';
+import {
+  Send,
+  Loader2,
+  Sparkles,
+  ArrowRight,
+  Hammer,
+  ClipboardCheck,
+  AlertTriangle,
+  Info,
+  AlertOctagon,
+} from 'lucide-react';
+import { clsx } from 'clsx';
 import { Button } from '@/components/ui/Button';
 import { useDiagramsStore } from '@/stores/diagrams.store';
 import { useCanvasStore } from '@/stores/canvas.store';
@@ -9,21 +20,39 @@ import { ChatMessage, DiagramConnection, DiagramNode } from '@/lib/types';
 import { autoPorts, bezierPath, portPosition } from '@/lib/canvas-utils';
 import { NODE_TYPE_COLORS } from '@/lib/tech-catalog';
 
+type Mode = 'design' | 'review';
+
+type CritiqueItem = {
+  severity: 'info' | 'warn' | 'risk';
+  area: string;
+  finding: string;
+  suggestion: string;
+};
+
 const STARTERS = [
   'A real-time collaborative whiteboard SaaS',
   'An e-commerce checkout with Stripe and inventory',
   'A multi-tenant API with rate limiting',
 ];
 
+const REVIEW_STARTERS = [
+  'Will this scale to 1M daily active users?',
+  'What is the biggest reliability risk?',
+  'Where could costs explode at 10x traffic?',
+];
+
 export function ChatTab({ onClose }: { onClose: () => void }) {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>('design');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [problemStatement, setProblemStatement] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nodes, setNodes] = useState<DiagramNode[]>([]);
   const [connections, setConnections] = useState<DiagramConnection[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [critique, setCritique] = useState<CritiqueItem[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const createDiagram = useDiagramsStore((s) => s.createDiagram);
@@ -35,10 +64,14 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, busy]);
+  }, [messages, busy, critique]);
 
   const send = async (text: string) => {
     if (!text.trim() || busy) return;
+    if (mode === 'review' && !problemStatement.trim()) {
+      setError('Add a problem statement first so the review has context.');
+      return;
+    }
     setError(null);
 
     const newUserMsg: ChatMessage = {
@@ -59,6 +92,8 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
           messages: nextMessages,
           currentNodes: nodes,
           currentConnections: connections,
+          mode,
+          problemStatement: mode === 'review' ? problemStatement : undefined,
         }),
       });
       if (!res.ok) {
@@ -70,11 +105,13 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
         nodes: DiagramNode[];
         connections: DiagramConnection[];
         suggestions: string[];
+        critique?: CritiqueItem[];
       } = await res.json();
 
       setNodes(data.nodes);
       setConnections(data.connections);
       setSuggestions(data.suggestions || []);
+      setCritique(data.critique || []);
       setMessages([
         ...nextMessages,
         {
@@ -118,24 +155,98 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
     router.push(`/diagram/${newDiagram.id}`);
   };
 
+  const starters = mode === 'review' ? REVIEW_STARTERS : STARTERS;
+  const placeholder =
+    mode === 'review'
+      ? 'Ask a review question (e.g. "What scales worst here?")'
+      : 'Describe what to build, or ask for changes…';
+
   return (
-    <div className="grid grid-cols-[1fr_360px] h-[480px]">
-      {/* Chat panel */}
-      <div className="flex flex-col border-r border-[var(--hairline)]">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
+    // Claude-style: design canvas on LEFT, chat rail on RIGHT.
+    <div className="grid grid-cols-[1fr_440px] h-[560px]">
+      {/* Live preview (left) */}
+      <div className="flex flex-col bg-[var(--background)]">
+        <div className="px-4 py-2.5 border-b border-[var(--hairline)] flex items-center justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--muted)]">
+            Live preview
+          </div>
+          <span className="font-mono text-[10px] tnum text-[var(--muted)]">
+            {nodes.length} nodes · {connections.length} edges
+          </span>
+        </div>
+        <div className="flex-1 overflow-hidden relative bg-[var(--paper,#FAF8F4)]">
+          <PreviewCanvas nodes={nodes} connections={connections} />
+        </div>
+        <div className="p-3 border-t border-[var(--hairline)]">
+          <Button
+            onClick={openInEditor}
+            disabled={nodes.length === 0 || busy}
+            className="w-full"
+          >
+            Open in editor
+            <ArrowRight size={13} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Chat rail (right) */}
+      <div className="flex flex-col border-l border-[var(--hairline)] bg-white">
+        {/* Mode toggle */}
+        <div className="px-3 pt-3 pb-2 border-b border-[var(--hairline)]">
+          <div className="inline-flex p-0.5 rounded-lg bg-neutral-100 w-full">
+            <ModePill
+              icon={Hammer}
+              label="Build"
+              active={mode === 'design'}
+              onClick={() => setMode('design')}
+            />
+            <ModePill
+              icon={ClipboardCheck}
+              label="Review"
+              active={mode === 'review'}
+              onClick={() => setMode('review')}
+            />
+          </div>
+          {mode === 'review' && (
+            <textarea
+              value={problemStatement}
+              onChange={(e) => setProblemStatement(e.target.value)}
+              placeholder="Problem statement — what is this system supposed to solve? (e.g. 'serve 50k concurrent video viewers with sub-second latency')"
+              rows={2}
+              className="mt-2 w-full text-[11px] leading-relaxed px-2.5 py-2 rounded-md border border-[var(--hairline)] bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] resize-none"
+            />
+          )}
+        </div>
+
+        {/* Messages */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
           {messages.length === 0 ? (
-            <div className="text-center pt-8">
-              <div className="w-12 h-12 rounded-2xl bg-[var(--accent-soft)] inline-flex items-center justify-center mb-3">
-                <Sparkles size={20} className="text-[var(--accent)]" />
+            <div className="text-center pt-6">
+              <div className="w-11 h-11 rounded-2xl bg-[var(--accent-soft)] inline-flex items-center justify-center mb-3">
+                {mode === 'review' ? (
+                  <ClipboardCheck size={18} className="text-[var(--accent)]" />
+                ) : (
+                  <Sparkles size={18} className="text-[var(--accent)]" />
+                )}
               </div>
-              <h3 className="font-display text-2xl mb-1">
-                Design with <span className="font-display-italic">AI</span>
+              <h3 className="font-display text-xl mb-1">
+                {mode === 'review' ? (
+                  <>
+                    Review with <span className="font-display-italic">AI</span>
+                  </>
+                ) : (
+                  <>
+                    Design with <span className="font-display-italic">AI</span>
+                  </>
+                )}
               </h3>
-              <p className="text-xs text-[var(--muted)] mb-5 max-w-xs mx-auto">
-                Describe what you want to build. The diagram updates as you chat.
+              <p className="text-xs text-[var(--muted)] mb-4 max-w-xs mx-auto">
+                {mode === 'review'
+                  ? 'Add a problem statement, then ask review questions about the current design.'
+                  : 'Describe what you want to build. The diagram updates as you chat.'}
               </p>
               <div className="space-y-1.5 max-w-sm mx-auto">
-                {STARTERS.map((s) => (
+                {starters.map((s) => (
                   <button
                     key={s}
                     onClick={() => send(s)}
@@ -160,8 +271,8 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
                   <div
                     className={
                       m.role === 'user'
-                        ? 'max-w-[80%] rounded-2xl rounded-tr-sm bg-[var(--foreground)] text-[var(--background)] px-3.5 py-2 text-xs leading-relaxed'
-                        : 'max-w-[80%] rounded-2xl rounded-tl-sm bg-[var(--accent-soft)] text-[var(--foreground)] px-3.5 py-2 text-xs leading-relaxed'
+                        ? 'max-w-[85%] rounded-2xl rounded-tr-sm bg-[var(--foreground)] text-[var(--background)] px-3.5 py-2 text-xs leading-relaxed'
+                        : 'max-w-[85%] rounded-2xl rounded-tl-sm bg-[var(--accent-soft)] text-[var(--foreground)] px-3.5 py-2 text-xs leading-relaxed'
                     }
                   >
                     {m.content}
@@ -170,12 +281,25 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
               ))}
               {busy && (
                 <div className="flex justify-start">
-                  <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-[var(--accent-soft)] text-[var(--foreground)] px-3.5 py-2 text-xs flex items-center gap-2">
+                  <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-[var(--accent-soft)] text-[var(--foreground)] px-3.5 py-2 text-xs flex items-center gap-2">
                     <Loader2 size={12} className="animate-spin" />
-                    Thinking…
+                    {mode === 'review' ? 'Reviewing…' : 'Thinking…'}
                   </div>
                 </div>
               )}
+
+              {/* Critique items — only shown in review mode */}
+              {mode === 'review' && critique.length > 0 && !busy && (
+                <div className="pt-2 space-y-1.5">
+                  <div className="font-mono text-[9px] uppercase tracking-wider text-[var(--muted)] mb-1">
+                    Findings · {critique.length}
+                  </div>
+                  {critique.map((c, i) => (
+                    <CritiqueCard key={i} item={c} />
+                  ))}
+                </div>
+              )}
+
               {suggestions.length > 0 && !busy && (
                 <div className="pt-2">
                   <div className="font-mono text-[9px] uppercase tracking-wider text-[var(--muted)] mb-1.5">
@@ -199,7 +323,7 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
         </div>
 
         {error && (
-          <div className="px-5 pb-2 text-[11px] text-red-600">{error}</div>
+          <div className="px-4 pb-2 text-[11px] text-red-600">{error}</div>
         )}
 
         <form
@@ -213,7 +337,7 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={busy}
-            placeholder="Describe what to build, or ask for changes…"
+            placeholder={placeholder}
             className="flex-1 h-9 bg-[var(--background)] border border-[var(--hairline)] rounded-md px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)]"
           />
           <button
@@ -225,30 +349,75 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
           </button>
         </form>
       </div>
+    </div>
+  );
+}
 
-      {/* Live preview */}
-      <div className="flex flex-col bg-[var(--background)]">
-        <div className="px-4 py-2 border-b border-[var(--hairline)] flex items-center justify-between">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-[var(--muted)]">
-            Live preview
-          </div>
-          <span className="font-mono text-[10px] tnum text-[var(--muted)]">
-            {nodes.length} nodes · {connections.length} edges
-          </span>
-        </div>
-        <div className="flex-1 overflow-hidden relative">
-          <PreviewCanvas nodes={nodes} connections={connections} />
-        </div>
-        <div className="p-3 border-t border-[var(--hairline)]">
-          <Button
-            onClick={openInEditor}
-            disabled={nodes.length === 0 || busy}
-            className="w-full"
-          >
-            Open in editor
-            <ArrowRight size={13} />
-          </Button>
-        </div>
+function ModePill({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: typeof Hammer;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      type="button"
+      className={clsx(
+        'flex-1 inline-flex items-center justify-center gap-1.5 h-7 rounded-md text-[11px] font-medium transition',
+        active
+          ? 'bg-white text-[var(--foreground)] shadow-sm'
+          : 'text-[var(--muted)] hover:text-[var(--foreground)]'
+      )}
+    >
+      <Icon size={12} />
+      {label}
+    </button>
+  );
+}
+
+function CritiqueCard({ item }: { item: CritiqueItem }) {
+  const sev = item.severity;
+  const palette =
+    sev === 'risk'
+      ? {
+          bg: 'bg-red-50',
+          border: 'border-red-200',
+          text: 'text-red-700',
+          Icon: AlertOctagon,
+        }
+      : sev === 'warn'
+      ? {
+          bg: 'bg-amber-50',
+          border: 'border-amber-200',
+          text: 'text-amber-700',
+          Icon: AlertTriangle,
+        }
+      : {
+          bg: 'bg-sky-50',
+          border: 'border-sky-200',
+          text: 'text-sky-700',
+          Icon: Info,
+        };
+  const Icon = palette.Icon;
+  return (
+    <div className={clsx('rounded-md border p-2.5', palette.bg, palette.border)}>
+      <div className={clsx('flex items-center gap-1.5 mb-1', palette.text)}>
+        <Icon size={11} />
+        <span className="font-mono text-[9px] uppercase tracking-wider">
+          {sev} · {item.area}
+        </span>
+      </div>
+      <div className="text-[11px] leading-snug text-[var(--foreground)] mb-1">
+        {item.finding}
+      </div>
+      <div className="text-[10.5px] leading-snug text-[var(--muted)]">
+        → {item.suggestion}
       </div>
     </div>
   );

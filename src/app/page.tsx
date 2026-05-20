@@ -13,14 +13,16 @@ export default function Home() {
           <Link href="/pricing" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
             Pricing
           </Link>
-          <Link href="/sign-in" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
+          {/* DEMO BYPASS — Sign in / Sign up links hidden so the demo lands
+              straight in the app. Restore by uncommenting below. */}
+          {/* <Link href="/sign-in" className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]">
             Sign in
-          </Link>
+          </Link> */}
           <Link
-            href="/sign-up"
+            href="/dashboard"
             className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-md bg-[var(--foreground)] text-[var(--background)] text-sm font-medium hover:opacity-90"
           >
-            Get started
+            Open app
             <ArrowRight size={13} />
           </Link>
         </div>
@@ -41,11 +43,12 @@ export default function Home() {
           Built for engineering teams who think in systems.
         </p>
         <div className="flex items-center justify-center gap-3">
+          {/* DEMO BYPASS — was href="/sign-up". Repointed to /dashboard. */}
           <Link
-            href="/sign-up"
+            href="/dashboard"
             className="inline-flex items-center gap-1.5 px-5 h-11 rounded-md bg-[var(--foreground)] text-[var(--background)] text-sm font-semibold hover:opacity-90"
           >
-            Get started free
+            Open app
             <ArrowRight size={14} />
           </Link>
           <Link
@@ -62,7 +65,8 @@ export default function Home() {
           <span>© 2026 ArchitectAI</span>
           <div className="flex gap-5">
             <Link href="/pricing">Pricing</Link>
-            <Link href="/sign-in">Sign in</Link>
+            {/* DEMO BYPASS — Sign in link hidden. */}
+            {/* <Link href="/sign-in">Sign in</Link> */}
           </div>
         </div>
       </footer>

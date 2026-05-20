@@ -19,7 +19,32 @@ const ARCH_LEVELS = ['HLD', 'LLD'] as const;
 const ARCH_STATES = ['Draft', 'InReview', 'Approved', 'Superseded'] as const;
 const DECISION_STATUSES = ['Proposed', 'Accepted', 'Superseded'] as const;
 const REVIEW_DECISIONS = ['approved', 'rejected', 'changes_requested'] as const;
-const LLM_PROVIDERS = ['anthropic', 'openai', 'google', 'custom'] as const;
+const LLM_PROVIDERS = [
+  'anthropic',
+  'openai',
+  'openrouter',
+  'google',
+  'databricks',
+  'custom',
+] as const;
+const SCAN_KINDS = ['codescan', 'schema_audit', 'integration'] as const;
+const SCAN_STATUSES = ['queued', 'running', 'succeeded', 'failed'] as const;
+const FINDING_PILLARS = ['codescan', 'architect', 'integration'] as const;
+const FINDING_SEVERITIES = [
+  'info',
+  'low',
+  'medium',
+  'high',
+  'critical',
+] as const;
+const FINDING_STATUSES = [
+  'open',
+  'acknowledged',
+  'fixed',
+  'wont_fix',
+  'duplicate',
+] as const;
+const FINDING_CONFIDENCES = ['low', 'medium', 'high'] as const;
 const ARTIFACT_KINDS = ['rs', 'ds-hld', 'ds-lld', 'adr', 'jira', 'code'] as const;
 const MEMBER_ROLES = [
   'owner',
@@ -300,6 +325,151 @@ export const generatedArtifacts = sqliteTable(
       t.architectureId,
       t.kind,
       t.contentHash
+    ),
+  })
+);
+
+// ─── Scans + universal findings (CodeScan++ pillar) ─────────────────────────
+
+export type FindingEvidence =
+  | {
+      type: 'sql';
+      sql: string;
+      dialect?: string;
+      astSummary?: Record<string, unknown>;
+      sourceLabel?: string;
+    }
+  | {
+      type: 'code';
+      repo?: string;
+      path?: string;
+      startLine?: number;
+      endLine?: number;
+      snippet: string;
+      commitSha?: string;
+    }
+  | {
+      type: 'schema';
+      db?: string;
+      schema?: string;
+      table: string;
+      column?: string;
+      ddl?: string;
+    }
+  | {
+      type: 'diagram';
+      architectureId: string;
+      version?: number;
+      fragmentRef: string;
+    }
+  | {
+      type: 'plan';
+      sql: string;
+      planJson?: Record<string, unknown>;
+      costEstimate?: number;
+    }
+  | {
+      type: 'note';
+      text: string;
+      meta?: Record<string, unknown>;
+    };
+
+export type FindingLink = {
+  kind: 'mr' | 'commit' | 'doc' | 'finding' | 'external';
+  url: string;
+  label?: string;
+};
+
+export const scans = sqliteTable(
+  'scans',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: SCAN_KINDS }).notNull(),
+    status: text('status', { enum: SCAN_STATUSES }).notNull().default('queued'),
+    label: text('label'),
+    commitSha: text('commit_sha'),
+    branchRef: text('branch_ref'),
+    triggeredByUserId: text('triggered_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    summary: text('summary', { mode: 'json' })
+      .$type<{
+        totalFindings: number;
+        bySeverity?: Record<string, number>;
+        notes?: string;
+      }>(),
+    error: text('error'),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
+    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => ({
+    projectIdx: index('scans_project_idx').on(t.projectId),
+    projectKindIdx: index('scans_project_kind_idx').on(t.projectId, t.kind),
+  })
+);
+
+export const findings = sqliteTable(
+  'findings',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    scanId: text('scan_id').references(() => scans.id, {
+      onDelete: 'set null',
+    }),
+    pillar: text('pillar', { enum: FINDING_PILLARS }).notNull(),
+    category: text('category').notNull(),
+    severity: text('severity', { enum: FINDING_SEVERITIES }).notNull(),
+    status: text('status', { enum: FINDING_STATUSES })
+      .notNull()
+      .default('open'),
+    confidence: text('confidence', { enum: FINDING_CONFIDENCES })
+      .notNull()
+      .default('medium'),
+    title: text('title').notNull(),
+    descriptionMd: text('description_md').notNull(),
+    suggestedFixMd: text('suggested_fix_md'),
+    evidence: text('evidence', { mode: 'json' })
+      .$type<FindingEvidence[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    links: text('links', { mode: 'json' })
+      .$type<FindingLink[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    score: integer('score'),
+    dedupeKey: text('dedupe_key').notNull(),
+    assigneeId: text('assignee_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    architectureId: text('architecture_id').references(() => architectures.id, {
+      onDelete: 'set null',
+    }),
+    firstSeenScanId: text('first_seen_scan_id'),
+    lastSeenScanId: text('last_seen_scan_id'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(tsNow),
+  },
+  (t) => ({
+    projectIdx: index('findings_project_idx').on(t.projectId),
+    scanIdx: index('findings_scan_idx').on(t.scanId),
+    pillarSeverityIdx: index('findings_pillar_severity_idx').on(
+      t.pillar,
+      t.severity
+    ),
+    dedupeIdx: uniqueIndex('findings_project_dedupe_idx').on(
+      t.projectId,
+      t.dedupeKey
     ),
   })
 );
