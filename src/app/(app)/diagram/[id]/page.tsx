@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from '@/components/diagram/StatusBadge';
 import { graphLayout } from '@/lib/graph-layout';
+import { sanitizeLabel, sanitizeEdgeLabel } from '@/lib/labels';
 import { clsx } from 'clsx';
 
 type LeftMode = 'palette' | 'chat' | null;
@@ -53,16 +54,28 @@ export default function DiagramEditorPage({
   const groups = useCanvasStore((s) => s.groups);
   const strokes = useCanvasStore((s) => s.strokes);
 
-  // One-click cleanup: run hierarchical DAG layout on the current canvas
-  // contents. Useful for diagrams that came back from older generations
-  // with tangled positions, or after manual exploration.
+  // One-click cleanup: run hierarchical DAG layout AND re-sanitize labels.
+  // Useful for diagrams that came back from older generations with tangled
+  // positions or labels containing literal <br/> tags. Also normalises every
+  // box to a consistent size so the canvas reads cleanly.
   const relayout = () => {
     if (nodes.length === 0) return;
-    const laid = graphLayout(nodes, connections);
-    loadVersion(laid, connections, groups, strokes);
+    const cleanedNodes = nodes.map((n) => ({
+      ...n,
+      label: sanitizeLabel(n.label) || 'Node',
+      desc: n.desc ? sanitizeLabel(n.desc).slice(0, 80) : n.desc,
+      width: 180,
+      height: 92,
+    }));
+    const cleanedConns = connections.map((c) => ({
+      ...c,
+      label: c.label ? sanitizeEdgeLabel(c.label) : c.label,
+    }));
+    const laid = graphLayout(cleanedNodes, cleanedConns);
+    loadVersion(laid, cleanedConns, groups, strokes);
     updateSnapshot(id, {
       nodes: laid,
-      connections,
+      connections: cleanedConns,
       groups,
       strokes,
     });

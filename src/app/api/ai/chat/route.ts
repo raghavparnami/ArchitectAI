@@ -58,11 +58,12 @@ Rules:
 - New IDs follow the pattern node_xxx / conn_xxx
 - node.x: integer 80-700. node.y: integer 80-560.
 - Layer top-to-bottom: Frontend (y≈80-140), API/Gateway (y≈220-280), Services (y≈360-440), Data (y≈500-560)
-- node.label: PLAIN TEXT, max 3 words. NO surrounding quotes. NO literal "\\n"
+- node.label: PLAIN TEXT, max 3 words. NO HTML, NO mermaid markup, NO <br>, NO surrounding quotes, NO literal "\\n", NO backticks. If you need two words use a single space — never a line break.
+- node.desc: PLAIN TEXT, ≤ 8 words. Same no-HTML / no-quote rules as label.
 - node.type: service|database|queue|gateway|frontend|cache|auth|monitor|cdn|ml|external
 - node.techId: id from catalog or empty string
 - connection endpoints must reference existing node ids
-- connection.label: max 18 chars. Examples: "HTTP", "Events", "SQL"
+- connection.label: max 18 chars, PLAIN TEXT only. Examples: "HTTP", "Events", "SQL". NO HTML, NO <br>.
 - Be specific in your reply — say what you added, removed, or changed`;
 
 const REVIEW_SYSTEM_PROMPT = `You are a senior software architect performing a critical review of an existing architecture diagram against a problem statement.
