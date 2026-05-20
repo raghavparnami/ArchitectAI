@@ -93,9 +93,10 @@ export async function POST(req: NextRequest) {
     // ─── XML / Mermaid / JSON go through local parsers (no AI cost) ─────
     if (source === 'xml') {
       const { nodes, connections } = parseDrawioXml(payload);
+      const stamped = stamp(nodes);
       return NextResponse.json({
         title: 'Imported diagram',
-        nodes: stamp(nodes),
+        nodes: autoLayout(stamped),
         connections: stamp(connections, 'conn'),
         suggestions: [],
         sourceDetected: 'xml',
@@ -103,9 +104,10 @@ export async function POST(req: NextRequest) {
     }
     if (source === 'mermaid') {
       const { nodes, connections } = parseMermaid(payload);
+      const stamped = stamp(nodes);
       return NextResponse.json({
         title: 'Imported diagram',
-        nodes: stamp(nodes),
+        nodes: autoLayout(stamped),
         connections: stamp(connections, 'conn'),
         suggestions: [],
         sourceDetected: 'mermaid',
@@ -118,9 +120,10 @@ export async function POST(req: NextRequest) {
         const connections: DiagramConnection[] = Array.isArray(parsed.connections)
           ? parsed.connections
           : [];
+        const stamped = stamp(nodes);
         return NextResponse.json({
           title: parsed.title ?? 'Imported diagram',
-          nodes: stamp(nodes),
+          nodes: autoLayout(stamped),
           connections: stamp(connections, 'conn'),
           suggestions: [],
           sourceDetected: 'json',
