@@ -4,8 +4,43 @@ import { clsx } from 'clsx';
 import { DiagramNode, NodeShape, Port } from '@/lib/types';
 import { getTech, NODE_TYPE_COLORS } from '@/lib/tech-catalog';
 import { NODE_W, NODE_H } from '@/lib/canvas-utils';
+import { sanitizeLabel } from '@/lib/labels';
 import { TechLogo } from './TechLogo';
-import { Key, Link2, Lock } from 'lucide-react';
+import {
+  Key,
+  Link2,
+  Lock,
+  Box,
+  Database,
+  Server,
+  ListPlus,
+  DoorOpen,
+  Monitor,
+  Lightbulb,
+  ShieldCheck,
+  Activity,
+  Cloud,
+  Brain,
+  Globe2,
+} from 'lucide-react';
+
+// Map each node type to a representative lucide icon. Used as the small
+// glyph in the top-left of every card when the node has no tech logo set.
+const TYPE_ICON = {
+  service:  Server,
+  database: Database,
+  queue:    ListPlus,
+  gateway:  DoorOpen,
+  frontend: Monitor,
+  cache:    Lightbulb,
+  auth:     ShieldCheck,
+  monitor:  Activity,
+  cdn:      Cloud,
+  ml:       Brain,
+  external: Globe2,
+  shape:    Box,
+  entity:   Box,
+} as const;
 
 interface CanvasNodeProps {
   node: DiagramNode;
@@ -34,6 +69,10 @@ function CanvasNodeImpl({
   const typeColor = NODE_TYPE_COLORS[node.type] ?? '#6F6A60';
   const isEntity = node.type === 'entity';
   const fields = node.fields ?? [];
+  // Defensive sanitization: data already in the store may contain raw HTML
+  // entities (`<br/>`, `&lt;`, etc.) from before sanitizeLabel was tightened.
+  // Render through the sanitizer so existing diagrams clean up on next view.
+  const cleanLabel = sanitizeLabel(node.label);
   // Entity height grows with field count
   const baseW = node.width ?? NODE_W;
   const baseH = isEntity ? Math.max(80, 36 + fields.length * 22) : (node.height ?? NODE_H);
@@ -43,7 +82,7 @@ function CanvasNodeImpl({
   const isCard = (shape === 'rect' && node.type !== 'shape') || isEntity;
 
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(node.label);
+  const [draft, setDraft] = useState(cleanLabel);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -53,13 +92,13 @@ function CanvasNodeImpl({
     }
   }, [editing]);
 
-  useEffect(() => { setDraft(node.label); }, [node.label]);
+  useEffect(() => { setDraft(cleanLabel); }, [cleanLabel]);
 
   const commit = () => {
-    if (draft.trim() && draft !== node.label) {
+    if (draft.trim() && draft !== cleanLabel) {
       onLabelChange(node.id, draft.trim());
     } else {
-      setDraft(node.label);
+      setDraft(cleanLabel);
     }
     setEditing(false);
   };
@@ -112,13 +151,13 @@ function CanvasNodeImpl({
                 onBlur={commit}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') commit();
-                  if (e.key === 'Escape') { setDraft(node.label); setEditing(false); }
+                  if (e.key === 'Escape') { setDraft(cleanLabel); setEditing(false); }
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 className="w-full bg-white rounded px-1 outline-none ring-1 ring-neutral-300 text-[12px] font-semibold"
               />
             ) : (
-              node.label
+              cleanLabel
             )}
           </div>
           <div className="flex-1 overflow-hidden">
@@ -156,9 +195,22 @@ function CanvasNodeImpl({
               >
                 <TechLogo tech={tech} size={16} />
               </div>
-            ) : (
-              <div className="w-7 h-7 rounded-md bg-[var(--accent-soft)] border border-[var(--hairline)]" />
-            )}
+            ) : (() => {
+                // No tech logo set — fall back to a type-flavored lucide icon
+                // so the corner glyph isn't an empty placeholder square.
+                const Icon = TYPE_ICON[node.type as keyof typeof TYPE_ICON] ?? Box;
+                return (
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center"
+                    style={{
+                      backgroundColor: `${typeColor}14`,
+                      border: `1px solid ${typeColor}40`,
+                    }}
+                  >
+                    <Icon size={14} color={typeColor} strokeWidth={2} />
+                  </div>
+                );
+              })()}
             <span
               className="px-1.5 py-0.5 rounded font-mono text-[9px] uppercase tracking-wide"
               style={{ backgroundColor: `${typeColor}22`, color: typeColor }}
@@ -175,14 +227,14 @@ function CanvasNodeImpl({
                 onBlur={commit}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') commit();
-                  if (e.key === 'Escape') { setDraft(node.label); setEditing(false); }
+                  if (e.key === 'Escape') { setDraft(cleanLabel); setEditing(false); }
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 className="w-full text-[13px] font-semibold bg-neutral-50 rounded px-1 outline-none ring-1 ring-neutral-300"
               />
             ) : (
               <div className="text-[12px] font-semibold leading-tight whitespace-pre-line break-words line-clamp-3">
-                {node.label}
+                {cleanLabel}
               </div>
             )}
             {node.desc && !editing && (
@@ -205,14 +257,14 @@ function CanvasNodeImpl({
               onBlur={commit}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') commit();
-                if (e.key === 'Escape') { setDraft(node.label); setEditing(false); }
+                if (e.key === 'Escape') { setDraft(cleanLabel); setEditing(false); }
               }}
               onMouseDown={(e) => e.stopPropagation()}
               className="pointer-events-auto text-center text-[13px] font-semibold bg-white rounded px-1 outline-none ring-1 ring-neutral-300 w-[80%]"
             />
           ) : (
             <div className="text-center text-[12px] font-semibold text-[var(--foreground)] leading-tight whitespace-pre-line break-words line-clamp-3">
-              {node.label}
+              {cleanLabel}
             </div>
           )}
         </div>
