@@ -27,6 +27,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # injected by Railway at runtime — these are dummy placeholders so build passes.
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_build_placeholder
 ENV CLERK_SECRET_KEY=sk_test_build_placeholder
+# better-sqlite3 reads DATABASE_URL at module load; Next page-data
+# collection imports the db module, so the build crashes without it.
+# Railway only injects runtime env vars — this placeholder satisfies
+# the build step and is overridden by the real value at runtime.
+ENV DATABASE_URL=./architectai.db
 RUN npm run build
 
 # ─── runner ─────────────────────────────────────────────────────────────────
