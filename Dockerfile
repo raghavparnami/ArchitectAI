@@ -23,10 +23,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-# Clerk needs SOMETHING to satisfy build-time env validation. Real values are
-# injected by Railway at runtime — these are dummy placeholders so build passes.
-ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_build_placeholder
-ENV CLERK_SECRET_KEY=sk_test_build_placeholder
 # better-sqlite3 reads DATABASE_URL at module load; Next page-data
 # collection imports the db module, so the build crashes without it.
 # Railway only injects runtime env vars — this placeholder satisfies

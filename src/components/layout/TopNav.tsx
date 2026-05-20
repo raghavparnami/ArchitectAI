@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode } from 'react';
 import { Code2, Hexagon, LayoutDashboard, Settings, Sparkles } from 'lucide-react';
-import { UserButton } from '@clerk/nextjs';
 import { clsx } from 'clsx';
 import { useDiagramsStore } from '@/stores/diagrams.store';
 
@@ -74,7 +73,6 @@ export function TopNav({ centerSlot, rightSlot }: TopNavProps) {
           <Sparkles size={11} />
           {hasHydrated ? `${used}/${PLAN_LIMIT}` : 'Free'}
         </Link>
-        <UserButton />
       </div>
     </header>
   );

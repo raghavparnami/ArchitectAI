@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// DEMO BYPASS — Clerk auth import kept commented for easy restore.
-// import { auth } from '@clerk/nextjs/server';
 import { parseMermaid } from '@/lib/import/parseMermaid';
 import { parseDrawioXml } from '@/lib/import/parseDrawioXml';
 import { DiagramConnection, DiagramNode, ImportSource } from '@/lib/types';

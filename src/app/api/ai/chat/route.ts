@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-// DEMO BYPASS — Clerk auth import kept commented for easy restore.
-// import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { safeGenerateObject } from '@/lib/llm/safeGenerate';
 import { graphLayout } from '@/lib/graph-layout';

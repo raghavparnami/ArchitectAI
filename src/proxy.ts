@@ -1,29 +1,11 @@
-import { clerkMiddleware /*, createRouteMatcher */ } from '@clerk/nextjs/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
-// ─── DEMO BYPASS ────────────────────────────────────────────────────────────
-// Auth gate temporarily disabled so the demo can be driven without signing in.
-// To restore: uncomment the `isPublicRoute` matcher + the `auth.protect()`
-// guard below, then delete the no-op handler.
-//
-// const isPublicRoute = createRouteMatcher([
-//   '/',
-//   '/pricing',
-//   '/sign-in(.*)',
-//   '/sign-up(.*)',
-//   '/api/webhooks(.*)',
-//   // Inngest's runner posts here with its own HMAC signature; Clerk auth
-//   // would block its requests.
-//   '/api/inngest(.*)',
-// ]);
-
-// Next.js 16: file is `proxy.ts` and the export is named `proxy`.
-// Clerk's clerkMiddleware() returns a request handler we re-export.
-export const proxy = clerkMiddleware(async (/* auth, req */) => {
-  // DEMO BYPASS — original guard:
-  // if (!isPublicRoute(req)) {
-  //   await auth.protect();
-  // }
-});
+// Demo build — no auth. This proxy is a pass-through so every request
+// reaches its route handler unchallenged. Keep the file (Next.js 16 looks
+// for it) but drop the Clerk import so we don't need Clerk env vars to boot.
+export function proxy(_req: NextRequest) {
+  return NextResponse.next();
+}
 
 export default proxy;
 

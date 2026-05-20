@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { ClerkProvider } from '@clerk/nextjs';
 import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
 import { TRPCProvider } from '@/lib/trpc/Provider';
 import './globals.css';
@@ -22,15 +21,13 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider>
-      <html
-        lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} h-full antialiased`}
-      >
-        <body className="min-h-full flex flex-col">
-          <TRPCProvider>{children}</TRPCProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">
+        <TRPCProvider>{children}</TRPCProvider>
+      </body>
+    </html>
   );
 }

@@ -1,5 +1,4 @@
 'use client';
-import { UserButton } from '@clerk/nextjs';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -19,7 +18,6 @@ export function Header({ title, onNewDiagram }: HeaderProps) {
             New diagram
           </Button>
         )}
-        <UserButton />
       </div>
     </header>
   );
