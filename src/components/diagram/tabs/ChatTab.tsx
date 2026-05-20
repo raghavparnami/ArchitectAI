@@ -174,7 +174,15 @@ export function ChatTab({ onClose }: { onClose: () => void }) {
             {nodes.length} nodes · {connections.length} edges
           </span>
         </div>
-        <div className="flex-1 overflow-hidden relative bg-[var(--paper,#FAF8F4)]">
+        <div
+          className="flex-1 overflow-hidden relative"
+          style={{
+            backgroundColor: 'var(--paper, #FAF8F4)',
+            backgroundImage:
+              'radial-gradient(circle at 1px 1px, rgba(15,17,16,0.06) 1px, transparent 0)',
+            backgroundSize: '18px 18px',
+          }}
+        >
           <PreviewCanvas nodes={nodes} connections={connections} />
         </div>
         <div className="p-3 border-t border-[var(--hairline)]">
@@ -438,13 +446,13 @@ function PreviewCanvas({
     );
   }
 
-  // Compute bbox
+  // Compute bbox with generous padding so labels and shadows don't clip.
   const xs = nodes.map((n) => n.x);
   const ys = nodes.map((n) => n.y);
-  const minX = Math.min(...xs) - 20;
-  const minY = Math.min(...ys) - 20;
-  const maxX = Math.max(...nodes.map((n) => n.x + (n.width ?? 140))) + 20;
-  const maxY = Math.max(...nodes.map((n) => n.y + (n.height ?? 80))) + 20;
+  const minX = Math.min(...xs) - 30;
+  const minY = Math.min(...ys) - 30;
+  const maxX = Math.max(...nodes.map((n) => n.x + (n.width ?? 180))) + 30;
+  const maxY = Math.max(...nodes.map((n) => n.y + (n.height ?? 92))) + 40;
   const w = maxX - minX;
   const h = maxY - minY;
 
@@ -457,16 +465,21 @@ function PreviewCanvas({
       <defs>
         <marker
           id="preview-arrow"
-          viewBox="0 0 10 10"
-          refX="9"
-          refY="5"
-          markerWidth="6"
-          markerHeight="6"
+          viewBox="0 0 12 12"
+          refX="10"
+          refY="6"
+          markerWidth="7"
+          markerHeight="7"
           orient="auto-start-reverse"
         >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3F3A33" />
+          <path d="M 0 0 L 12 6 L 0 12 L 3 6 Z" fill="#8B7E6A" />
         </marker>
+        <filter id="preview-card-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#0E0F10" floodOpacity="0.10" />
+        </filter>
       </defs>
+
+      {/* Connections — drawn first so they appear under the cards. */}
       {connections.map((c) => {
         const from = nodes.find((n) => n.id === c.fromNodeId);
         const to = nodes.find((n) => n.id === c.toNodeId);
@@ -475,42 +488,133 @@ function PreviewCanvas({
         const a = portPosition(from, ports.fromPort);
         const b = portPosition(to, ports.toPort);
         const d = bezierPath(a, b, ports.fromPort, ports.toPort);
+        // Midpoint for the optional label pill.
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const label = c.label?.trim();
         return (
-          <path
-            key={c.id}
-            d={d}
-            stroke="#3F3A33"
-            strokeWidth={1.5}
-            fill="none"
-            markerEnd="url(#preview-arrow)"
-          />
+          <g key={c.id}>
+            <path
+              d={d}
+              stroke="#A6957A"
+              strokeWidth={1.4}
+              fill="none"
+              strokeLinecap="round"
+              markerEnd="url(#preview-arrow)"
+              opacity={0.9}
+            />
+            {label && label.length > 0 && (
+              <g>
+                <rect
+                  x={mx - label.length * 3 - 6}
+                  y={my - 8}
+                  width={label.length * 6 + 12}
+                  height={14}
+                  rx={7}
+                  fill="#FFFFFF"
+                  stroke="#E8E0D0"
+                  strokeWidth={1}
+                />
+                <text
+                  x={mx}
+                  y={my + 2}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fontFamily="ui-monospace, 'SF Mono', monospace"
+                  fontWeight={500}
+                  fill="#6F6A60"
+                  letterSpacing="0.04em"
+                >
+                  {label.length > 14 ? label.slice(0, 13) + '…' : label}
+                </text>
+              </g>
+            )}
+          </g>
         );
       })}
+
+      {/* Nodes — soft-tinted cards with a colored accent stripe + type badge. */}
       {nodes.map((n) => {
         const color = NODE_TYPE_COLORS[n.type] ?? '#6F6A60';
+        const nw = n.width ?? 180;
+        const nh = n.height ?? 92;
+        const label = n.label;
+        const labelLine =
+          label.length > 22 ? label.slice(0, 21) + '…' : label;
         return (
-          <g key={n.id}>
+          <g key={n.id} filter="url(#preview-card-shadow)">
+            {/* Card body */}
             <rect
               x={n.x}
               y={n.y}
-              width={n.width ?? 140}
-              height={n.height ?? 80}
-              rx={6}
+              width={nw}
+              height={nh}
+              rx={10}
+              ry={10}
               fill="#FFFFFF"
-              stroke={color}
-              strokeWidth={1.5}
+              stroke={`${color}55`}
+              strokeWidth={1.25}
             />
+            {/* Top accent stripe — colored by node type */}
+            <rect
+              x={n.x}
+              y={n.y}
+              width={nw}
+              height={4}
+              rx={10}
+              ry={10}
+              fill={color}
+              opacity={0.85}
+            />
+            {/* Type badge (pill) in the top-right corner */}
+            <g>
+              <rect
+                x={n.x + nw - 56}
+                y={n.y + 11}
+                width={48}
+                height={14}
+                rx={7}
+                fill={`${color}1A`}
+                stroke={`${color}55`}
+                strokeWidth={0.75}
+              />
+              <text
+                x={n.x + nw - 32}
+                y={n.y + 21}
+                textAnchor="middle"
+                fontSize={8}
+                fontFamily="ui-monospace, 'SF Mono', monospace"
+                fontWeight={700}
+                fill={color}
+                letterSpacing="0.08em"
+              >
+                {n.type.toUpperCase().slice(0, 7)}
+              </text>
+            </g>
+            {/* Label — placed below the accent stripe */}
             <text
-              x={n.x + (n.width ?? 140) / 2}
-              y={n.y + (n.height ?? 80) / 2 + 4}
-              textAnchor="middle"
-              fontSize={11}
-              fontFamily="ui-sans-serif, system-ui"
+              x={n.x + 12}
+              y={n.y + nh / 2 + 8}
+              fontSize={13}
+              fontFamily="ui-sans-serif, system-ui, -apple-system"
               fontWeight={600}
               fill="#0E0F10"
             >
-              {n.label.length > 16 ? n.label.slice(0, 15) + '…' : n.label}
+              {labelLine}
             </text>
+            {/* Optional description in muted text */}
+            {n.desc && (
+              <text
+                x={n.x + 12}
+                y={n.y + nh - 10}
+                fontSize={9.5}
+                fontFamily="ui-sans-serif, system-ui"
+                fontWeight={400}
+                fill="#8B8378"
+              >
+                {n.desc.length > 28 ? n.desc.slice(0, 27) + '…' : n.desc}
+              </text>
+            )}
           </g>
         );
       })}
